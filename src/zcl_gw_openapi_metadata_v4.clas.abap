@@ -8,6 +8,14 @@ CLASS zcl_gw_openapi_metadata_v4 DEFINITION
 
     INTERFACES zif_gw_openapi_metadata .
 
+    CLASS-METHODS get_service_description
+      IMPORTING
+        iv_repository TYPE /iwbep/v4_med_repository_id
+        iv_service    TYPE /iwbep/v4_med_service_id
+        iv_version    TYPE /iwbep/v4_med_service_version
+      RETURNING
+        VALUE(rv_description) TYPE /iwbep/v4_reg_description.
+
     METHODS constructor
       IMPORTING
         !iv_repository TYPE /iwbep/v4_med_repository_id
@@ -35,6 +43,37 @@ ENDCLASS.
 
 
 CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
+
+  METHOD get_service_description.
+    DATA lo_repository TYPE REF TO object.
+    DATA lt_service_key TYPE /iwbep/t_v4_med_service_key.
+    DATA lt_service_info TYPE /iwbep/if_v4_registry_types=>ty_t_service_info.
+
+*   Preserve classic descriptions if the repository API is unavailable.
+    SELECT SINGLE description FROM /iwbep/i_v4_msrt
+      INTO @rv_description
+      WHERE service_id = @iv_service
+        AND service_version = @iv_version
+        AND language = @sy-langu.
+
+    TRY.
+        lt_service_key = VALUE #( ( repository_id = iv_repository
+                                    service_id = iv_service
+                                    service_version = iv_version ) ).
+        CALL METHOD ('/IWBEP/CL_V4_SERVICE_REPO_FACT')=>('GET_SERVICE_REPOSITORY')
+          EXPORTING iv_repository_id = iv_repository
+          RECEIVING ro_repository = lo_repository.
+        CALL METHOD lo_repository->('/IWBEP/IF_V4_SERVICE_REPO~GET_SERVICES_BY_KEY_LIST')
+          EXPORTING it_service_key = lt_service_key
+          RECEIVING rt_service_info = lt_service_info.
+        READ TABLE lt_service_info INTO DATA(ls_info) INDEX 1.
+        IF sy-subrc = 0 AND ls_info-description IS NOT INITIAL.
+          rv_description = ls_info-description.
+        ENDIF.
+      CATCH /iwbep/cx_v4_registry cx_sy_dyn_call_error.
+*       Descriptions are optional; keep the classic text or an empty description.
+    ENDTRY.
+  ENDMETHOD.
 
 
   METHOD constructor.
@@ -118,29 +157,11 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
 
     FIELD-SYMBOLS: <lv_base_url> TYPE string.
 
-*   Read service details
-    SELECT SINGLE a~repository_id, a~group_id, a~service_id, s~service_version, t~description
-      FROM /iwbep/i_v4_msga AS a
-      INNER JOIN /iwbep/i_v4_msrv AS s ON a~service_id = s~service_id
-      INNER JOIN /iwfnd/c_v4_msgr AS p ON a~group_id = p~group_id
-      LEFT OUTER JOIN /iwbep/i_v4_msrt AS t ON s~service_id = t~service_id
-                                            AND s~service_version = t~service_version
-                                            AND t~language = @sy-langu
-      INTO @DATA(ls_service)
-      WHERE a~group_id = @me->mv_group_id
-      AND a~service_id = @me->mv_external_service
-      AND a~repository_id = @me->mv_repository
-      AND s~service_version = @me->mv_version.
-
-*   RAP services are resolved by the Gateway registry, not the classic tables.
-*   Keep the requested identity even when only the classic description is absent.
-    ls_service-group_id = me->mv_group_id.
-    ls_service-repository_id = me->mv_repository.
-    ls_service-service_id = me->mv_external_service.
-    ls_service-service_version = me->mv_version.
-
 *   Store description
-    me->mv_description = ls_service-description.
+    me->mv_description = get_service_description(
+      iv_repository = me->mv_repository
+      iv_service = CONV #( me->mv_external_service )
+      iv_version = me->mv_version ).
 
 *   Set service base url (gc_uri_icf_path = 7.54, gc_root_url = 7.53 and lower), not available in 7.52
     ASSIGN ('/iwbep/cl_v4_url_util')=>('gc_uri_icf_path') TO <lv_base_url>.
@@ -154,10 +175,10 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
       lv_service = '/sap/opu/odata4'.
     ENDIF.
 
-    lv_service = lv_service && '/' && ls_service-group_id && '/'
-               && ls_service-repository_id && '/'
-               && ls_service-service_id && '/'
-               && ls_service-service_version.
+    lv_service = lv_service && '/' && me->mv_group_id && '/'
+               && me->mv_repository && '/'
+               && me->mv_external_service && '/'
+               && me->mv_version.
 
     lv_service = to_lower( lv_service ).
     REPLACE ALL OCCURRENCES OF '//' IN lv_service WITH '/'.

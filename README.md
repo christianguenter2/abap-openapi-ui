@@ -23,6 +23,11 @@ releases without this registry API retain the classic table lookup. Metadata
 loading uses the selected repository and service identity, and Gateway's URL
 utility supplies the service path and default namespace.
 
+Service descriptions are read from their owning repositories, including RAP.
+Faulty assignments and groups with registry errors are skipped so other published
+services remain available. The description lookup falls back to classic texts
+when the repository API is unavailable.
+
 # FAQ
 For questions, bugs or feature requests please create an [issue](https://gitlab.com/geertjanklaps/abap-openapi-ui/issues)
 

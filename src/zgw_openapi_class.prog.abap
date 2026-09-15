@@ -144,13 +144,34 @@ CLASS lcl_screen_handler IMPLEMENTATION.
 
         LOOP AT lt_groups INTO DATA(ls_group).
           CLEAR <lt_assignments>.
-          CALL METHOD ('/IWBEP/CL_V4_REGISTRY_DBA')=>('GET_SRV_ASSIGNMENTS_FOR_GROUP')
-            EXPORTING
-              iv_group_id = ls_group-group_id
-            RECEIVING
-              rt_assignment = <lt_assignments>.
+          TRY.
+              TRY.
+                  CALL METHOD ('/IWBEP/CL_V4_REGISTRY_DBA')=>('GET_SRV_ASSIGNMENTS_FOR_GROUP')
+                    EXPORTING
+                      iv_group_id = ls_group-group_id
+                      iv_do_accept_faulty_entries = abap_true
+                    RECEIVING
+                      rt_assignment = <lt_assignments>.
+                CATCH cx_sy_dyn_call_param_not_found.
+*                 Older registries do not expose the fault-tolerance option.
+                  CALL METHOD ('/IWBEP/CL_V4_REGISTRY_DBA')=>('GET_SRV_ASSIGNMENTS_FOR_GROUP')
+                    EXPORTING iv_group_id = ls_group-group_id
+                    RECEIVING rt_assignment = <lt_assignments>.
+              ENDTRY.
+            CATCH /iwbep/cx_v4_registry.
+*             A broken group must not prevent other published groups from loading.
+              CONTINUE.
+          ENDTRY.
 
           LOOP AT <lt_assignments> ASSIGNING FIELD-SYMBOL(<ls_assignment>).
+            FIELD-SYMBOLS <lv_has_error> TYPE any.
+            UNASSIGN <lv_has_error>.
+            ASSIGN COMPONENT 'HAS_ERROR' OF STRUCTURE <ls_assignment> TO <lv_has_error>.
+            IF <lv_has_error> IS ASSIGNED.
+              IF <lv_has_error> = abap_true.
+                CONTINUE.
+              ENDIF.
+            ENDIF.
             DATA ls_service TYPE ty_v4_service_s.
             CLEAR ls_service.
             MOVE-CORRESPONDING <ls_assignment> TO ls_service.
@@ -158,6 +179,10 @@ CLASS lcl_screen_handler IMPLEMENTATION.
             IF ls_service-service_id IN s_name4
                 AND ls_service-repository_id IN s_rep4
                 AND ls_service-service_version IN s_vers4.
+              ls_service-description = zcl_gw_openapi_metadata_v4=>get_service_description(
+                iv_repository = ls_service-repository_id
+                iv_service = ls_service-service_id
+                iv_version = ls_service-service_version ).
               APPEND ls_service TO gt_v4_data.
             ENDIF.
           ENDLOOP.
