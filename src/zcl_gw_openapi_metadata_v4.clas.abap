@@ -41,17 +41,6 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
 *   Call super class constructor
     super->constructor( ).
 
-*   Check if service exists
-    SELECT SINGLE a~repository_id, a~group_id, a~service_id, s~service_version
-      FROM /iwbep/i_v4_msga AS a
-      INNER JOIN /iwbep/i_v4_msrv AS s ON a~service_id = s~service_id
-      INNER JOIN /iwfnd/c_v4_msgr AS p ON a~group_id = p~group_id
-      INTO @DATA(ls_service)
-      WHERE a~group_id = @me->mv_group_id
-      AND a~service_id = @me->mv_external_service
-      AND a~repository_id = @me->mv_repository
-      AND s~service_version = @me->mv_version.
-
 *   Store service parameters
     me->mv_repository = iv_repository.
     me->mv_group_id = iv_group_id.
@@ -143,6 +132,13 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
       AND a~repository_id = @me->mv_repository
       AND s~service_version = @me->mv_version.
 
+*   RAP services are resolved by the Gateway registry, not the classic tables.
+*   Keep the requested identity even when only the classic description is absent.
+    ls_service-group_id = me->mv_group_id.
+    ls_service-repository_id = me->mv_repository.
+    ls_service-service_id = me->mv_external_service.
+    ls_service-service_version = me->mv_version.
+
 *   Store description
     me->mv_description = ls_service-description.
 
@@ -158,13 +154,29 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
       lv_service = '/sap/opu/odata4'.
     ENDIF.
 
-    lv_service = lv_service && ls_service-group_id && '/'
+    lv_service = lv_service && '/' && ls_service-group_id && '/'
                && ls_service-repository_id && '/'
                && ls_service-service_id && '/'
                && ls_service-service_version.
 
     lv_service = to_lower( lv_service ).
     REPLACE ALL OCCURRENCES OF '//' IN lv_service WITH '/'.
+
+*   Let Gateway add the default SAP namespace for unqualified service names.
+    TRY.
+        CALL METHOD ('/IWBEP/CL_V4_URL_UTIL')=>('GET_SERVICE_ROOT_URI')
+          EXPORTING
+            is_service_key = VALUE /iwbep/s_v4_med_service_key(
+              repository_id = me->mv_repository
+              service_id = me->mv_external_service
+              service_version = me->mv_version )
+            iv_service_group_id = me->mv_group_id
+          RECEIVING
+            rv_uri = lv_service.
+      CATCH cx_sy_dyn_call_illegal_method.
+*       Older releases use the path constructed above.
+    ENDTRY.
+    REPLACE REGEX '/$' IN lv_service WITH ''.
 
 *   Get base URL details
     DATA(lv_base_url) = me->mv_base_url && lv_service.
@@ -201,7 +213,7 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
     FIELD-SYMBOLS: <fieldvalue> TYPE data.
     ASSIGN COMPONENT 'URI_REQUEST' OF STRUCTURE ls_request_base_info TO <fieldvalue>.
     IF <fieldvalue> IS ASSIGNED.
-      <fieldvalue> = lv_service && '$metadata?sap-documentation=all'.
+      <fieldvalue> = lv_service && '/$metadata?sap-documentation=all'.
       APPEND INITIAL LINE TO ls_request_base_info-http_headers ASSIGNING FIELD-SYMBOL(<fs_http_header>).
       <fs_http_header>-name = '~request_uri'.
       <fs_http_header>-value = <fieldvalue>.
@@ -224,13 +236,36 @@ CLASS ZCL_GW_OPENAPI_METADATA_V4 IMPLEMENTATION.
             is_base_info = ls_request_base_info.
     ENDTRY.
 
+*   Newer V4 runtimes validate the service group timestamp before loading metadata.
+*   Older releases do not expose these methods and do not require this context.
+    DATA lv_group_timestamp TYPE timestamp.
+    DATA(lo_registry) = /iwbep/cl_v4_registry=>get_instance( ).
+    TRY.
+        CALL METHOD lo_registry->('GET_LAST_MODIFIED_OF_GROUP')
+          EXPORTING
+            iv_service_group_id = me->mv_group_id
+          RECEIVING
+            rv_last_modified = lv_group_timestamp.
+        CALL METHOD li_request_info->('SET_SRV_GROUP_CACHE_TIMESTAMP')
+          EXPORTING
+            iv_last_modified = lv_group_timestamp.
+      CATCH cx_sy_dyn_call_illegal_method.
+*       Service group cache timestamps are not available on this release.
+    ENDTRY.
+
     li_request_info->set_lib_request_info( NEW /iwbep/cl_od_request_info( ) ).
     li_request_info->set_operation_kind(
       iv_operation_kind = /iwbep/if_v4_request_info=>gcs_operation_kinds-load_metadata ).
 
     DATA(lo_context) = NEW /iwcor/cl_od_cntxt( ).
+*   The request-info context identifier was renamed in newer Gateway releases.
+    FIELD-SYMBOLS <lv_context_id> TYPE string.
+    ASSIGN ('/IWBEP/IF_OD_TYPES')=>('GCS_LIB_CONTEXT-REQUEST_INFO') TO <lv_context_id>.
+    IF sy-subrc <> 0.
+      ASSIGN ('/IWBEP/IF_OD_TYPES')=>('GC_OD_CNTX_OBJECT_IDENTIFIER') TO <lv_context_id>.
+    ENDIF.
     lo_context->/iwcor/if_od_cntxt~set_object(
-        iv_name   = /iwbep/if_od_types=>gc_od_cntx_object_identifier
+        iv_name   = <lv_context_id>
         io_object = li_request_info ).
 
 *   Load metadata document

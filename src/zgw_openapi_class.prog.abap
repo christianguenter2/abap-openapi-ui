@@ -129,6 +129,51 @@ CLASS lcl_screen_handler IMPLEMENTATION.
 
   METHOD get_v4_data.
 
+*   The registry includes RAP assignments that are absent from the classic tables.
+*   Create its result type dynamically so older Gateway releases still compile.
+    DATA lr_assignments TYPE REF TO data.
+    FIELD-SYMBOLS <lt_assignments> TYPE STANDARD TABLE.
+    CLEAR gt_v4_data.
+    TRY.
+        CREATE DATA lr_assignments TYPE ('/IWBEP/IF_V4_REGISTRY_TYPES=>TY_T_SERVICE_ASSIGNMENT_INT').
+        ASSIGN lr_assignments->* TO <lt_assignments>.
+
+        SELECT group_id FROM /iwfnd/c_v4_msgr
+          INTO TABLE @DATA(lt_groups)
+          WHERE group_id IN @s_grp4.
+
+        LOOP AT lt_groups INTO DATA(ls_group).
+          CLEAR <lt_assignments>.
+          CALL METHOD ('/IWBEP/CL_V4_REGISTRY_DBA')=>('GET_SRV_ASSIGNMENTS_FOR_GROUP')
+            EXPORTING
+              iv_group_id = ls_group-group_id
+            RECEIVING
+              rt_assignment = <lt_assignments>.
+
+          LOOP AT <lt_assignments> ASSIGNING FIELD-SYMBOL(<ls_assignment>).
+            DATA ls_service TYPE ty_v4_service_s.
+            CLEAR ls_service.
+            MOVE-CORRESPONDING <ls_assignment> TO ls_service.
+            ls_service-group_id = ls_group-group_id.
+            IF ls_service-service_id IN s_name4
+                AND ls_service-repository_id IN s_rep4
+                AND ls_service-service_version IN s_vers4.
+              APPEND ls_service TO gt_v4_data.
+            ENDIF.
+          ENDLOOP.
+        ENDLOOP.
+        SORT gt_v4_data BY service_id group_id repository_id service_version.
+        DELETE ADJACENT DUPLICATES FROM gt_v4_data
+          COMPARING service_id group_id repository_id service_version.
+        RETURN.
+      CATCH cx_sy_create_data_error cx_sy_dyn_call_illegal_method.
+*       The RAP-aware registry is unavailable; use the classic service tables.
+        CLEAR gt_v4_data.
+      CATCH /iwbep/cx_gateway INTO DATA(lx_registry).
+        CLEAR gt_v4_data.
+        MESSAGE lx_registry->get_text( ) TYPE 'E'.
+    ENDTRY.
+
 *   Read service details
     SELECT a~repository_id, a~group_id, a~service_id, s~service_version, t~description
       FROM /iwbep/i_v4_msga AS a
