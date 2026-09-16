@@ -67,7 +67,9 @@ CLASS ZCL_GW_OPENAPI_METADATA_V2 IMPLEMENTATION.
 
     DATA(lv_metadata) = me->_read_metadata( ).
     DATA(lv_metadata_v4) = me->convert_odatav2_to_odatav4( iv_metadata_v2 = lv_metadata ).
-    DATA(lv_openapi) = me->convert_odatav4_to_json( iv_metadata_v4 = lv_metadata_v4 ).
+    DATA(lv_openapi) = me->convert_odatav4_to_json(
+      iv_metadata_v4 = lv_metadata_v4
+      iv_odata_version = '2.0' ).
 
 *   Convert binary data to string
     DATA(lo_conv) = cl_abap_conv_in_ce=>create(

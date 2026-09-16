@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:Reference Uri="Core.xml"><edmx:Include Namespace="Org.OData.Core.V1" Alias="Core"/></edmx:Reference>
+  <edmx:Reference Uri="Capabilities.xml"><edmx:Include Namespace="Org.OData.Capabilities.V1" Alias="Capabilities"/></edmx:Reference>
+  <edmx:DataServices><Schema Namespace="Test" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+    <EntityType Name="Item">
+      <Key><PropertyRef Name="ID"/></Key>
+      <Property Name="ID" Type="Edm.Guid" Nullable="false"><Annotation Term="Core.ComputedDefaultValue" Bool="true"/></Property>
+      <Property Name="Name" Type="Edm.String" Nullable="false"/>
+      <Property Name="ServerValue" Type="Edm.String"><Annotation Term="Core.Computed" Bool="true"/></Property>
+    </EntityType>
+    <Action Name="Approve" IsBound="true"><Parameter Name="binding" Type="Test.Item"/><Parameter Name="Comment" Type="Edm.String"/></Action>
+    <EntityContainer Name="Container"><EntitySet Name="Items" EntityType="Test.Item">
+      <Annotation Term="Capabilities.InsertRestrictions"><Record><PropertyValue Property="RequiredProperties"><Collection><PropertyPath>Name</PropertyPath></Collection></PropertyValue></Record></Annotation>
+      <Annotation Term="Capabilities.UpdateRestrictions"><Record><PropertyValue Property="RequiredProperties"><Collection><PropertyPath>Name</PropertyPath></Collection></PropertyValue></Record></Annotation>
+    </EntitySet></EntityContainer>
+    <Annotations Target="Test.Container"><Annotation Term="Capabilities.KeyAsSegmentSupported" Bool="true"/></Annotations>
+  </Schema></edmx:DataServices>
+</edmx:Edmx>

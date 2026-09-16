@@ -11,13 +11,11 @@
     - response codes and descriptions - https://issues.oasis-open.org/browse/ODATA-884
     - inline definitions for Edm.* to make OpenAPI documents self-contained
     - complex or collection-valued function parameters need special treatment in /paths,
-    use parameter aliases with alias option of type string
+      use parameter aliases with alias option of type string
     - @Extends for entity container: include /paths from referenced container
     - both "clickable" and freestyle $expand, $select, $orderby - does not work yet, open issue for Swagger UI
     - system query options for actions/functions/imports depending on "Collection("
-    - 200 response for PATCH if $odata-version!='2.0'
     - ETag for GET / If-Match for PATCH and DELETE depending on @Core.OptimisticConcurrency
-    - external targeting for Capabilities.KeyAsSegmentSupported
     - external targeting for Core.Permission/Read
     - example values via Core.Example: Int
     - count/expand restrictions for GET collection-valued (containment) navigation - https://issues.oasis-open.org/browse/ODATA-1300
@@ -60,18 +58,9 @@
   <xsl:param name="entityTypeColor" select="'{bg:orange}'" />
   <xsl:param name="externalTypeColor" select="'{bg:whitesmoke}'" />
   <xsl:param name="resourceColor" select="'{bg:dodgerblue}'" />
-
+  <xsl:variable name="option-prefix" select="'$'" />
   <xsl:variable name="csdl-version" select="/edmx:Edmx/@Version" />
-  <xsl:variable name="option-prefix">
-    <xsl:choose>
-      <xsl:when test="/edmx:Edmx/@Version='4.0'">
-        <xsl:text>$</xsl:text>
-      </xsl:when>
-      <xsl:otherwise>
-        <xsl:text />
-      </xsl:otherwise>
-    </xsl:choose>
-  </xsl:variable>
+
 
   <xsl:variable name="reuse-schemas">
     <xsl:choose>
@@ -110,6 +99,8 @@
   <xsl:variable name="coreAcceptableMediaTypesAliased" select="concat($coreAlias,'.AcceptableMediaTypes')" />
   <xsl:variable name="coreComputed" select="concat($coreNamespace,'.Computed')" />
   <xsl:variable name="coreComputedAliased" select="concat($coreAlias,'.Computed')" />
+  <xsl:variable name="coreComputedDefaultValue" select="concat($coreNamespace,'.ComputedDefaultValue')" />
+  <xsl:variable name="coreComputedDefaultValueAliased" select="concat($coreAlias,'.ComputedDefaultValue')" />
   <xsl:variable name="coreDefaultNamespace" select="concat($coreNamespace,'.DefaultNamespace')" />
   <xsl:variable name="coreDefaultNamespaceAliased" select="concat($coreAlias,'.DefaultNamespace')" />
   <xsl:variable name="coreDescription" select="concat($coreNamespace,'.Description')" />
@@ -192,6 +183,15 @@
   <xsl:variable name="commonSontReference" select="concat($commonNamespace,'.SAPObjectNodeTypeReference')" />
   <xsl:variable name="commonSontReferenceAliased" select="concat($commonAlias,'.SAPObjectNodeTypeReference')" />
 
+  <xsl:variable name="odmNamespace" select="'com.sap.vocabularies.ODM.v1'" />
+  <xsl:variable name="odmAlias" select="/edmx:Edmx/edmx:Reference/edmx:Include[@Namespace=$odmNamespace]/@Alias" />
+  <xsl:variable name="odmEntityName" select="concat($odmNamespace,'.entityName')" />
+  <xsl:variable name="odmEntityNameAliased" select="concat($odmAlias,'.entityName')" />
+  <xsl:variable name="odmOid" select="concat($odmNamespace,'.oid')" />
+  <xsl:variable name="odmOidAliased" select="concat($odmAlias,'.oid')" />
+  <xsl:variable name="odmOidReference" select="concat($odmNamespace,'.oidReference')" />
+  <xsl:variable name="odmOidReferenceAliased" select="concat($odmAlias,'.oidReference')" />
+
   <xsl:variable name="defaultResponse">
     <xsl:text>"</xsl:text>
     <xsl:choose>
@@ -209,15 +209,37 @@
     <xsl:text>responses/error"}</xsl:text>
   </xsl:variable>
 
-  <xsl:variable name="keyAsSegmentSupported" select="concat($capabilitiesNamespace,'.KeyAsSegmentSupported')" />
-  <xsl:variable name="keyAsSegmentSupportedAliased" select="concat($capabilitiesAlias,'.KeyAsSegmentSupported')" />
-  <xsl:variable name="key-as-segment" select="boolean(/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityContainer/edm:Annotation[not(@Qualifier) and (@Term=$keyAsSegmentSupported or @Term=$keyAsSegmentSupportedAliased)])" />
+  <xsl:variable name="key-as-segment-value">
+    <xsl:variable name="target" select="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityContainer" />
+    <xsl:variable name="target-path" select="concat($target/../@Namespace,'.',$target/@Name)" />
+    <xsl:variable name="target-path-aliased" select="concat($target/../@Alias,'.',$target/@Name)" />
+    <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)|$target" />
+    <xsl:variable name="term" select="concat($capabilitiesNamespace,'.KeyAsSegmentSupported')" />
+    <xsl:variable name="termAliased" select="concat($capabilitiesAlias,'.KeyAsSegmentSupported')" />
+    <xsl:variable name="anno" select="$annos/edm:Annotation[@Term=$term or @Term=$termAliased]" />
+    <xsl:choose>
+      <xsl:when test="$anno/@Bool|$anno/edm:Bool">
+        <xsl:value-of select="$anno/@Bool|$anno/edm:Bool" />
+      </xsl:when>
+      <xsl:when test="$anno">
+        <xsl:text>true</xsl:text>
+      </xsl:when>
+    </xsl:choose>
+  </xsl:variable>
+  <xsl:variable name="key-as-segment" select="$key-as-segment-value='true'" />
+
 
   <xsl:key name="externalAnnotations" match="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:Annotations" use="@Target" />
   <xsl:key name="externalPropertyAnnotations" match="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:Annotations[contains(@Target,'/')]" use="substring-before(@Target,'/')" />
 
   <xsl:key name="namespaceQualifiedType" match="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityType|/edmx:Edmx/edmx:DataServices/edm:Schema/edm:ComplexType" use="concat(../@Namespace,'.',@Name)" />
   <xsl:key name="aliasQualifiedType" match="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityType|/edmx:Edmx/edmx:DataServices/edm:Schema/edm:ComplexType" use="concat(../@Alias,'.',@Name)" />
+
+  <xsl:key name="label" match="//edm:Annotation[
+    (parent::edm:EntityType or parent::edm:Annotations[not(contains(@Target,'/'))]) and
+    (@Term='com.sap.vocabularies.Common.v1.Label' or
+    @Term=concat(/edmx:Edmx/edmx:Reference/edmx:Include[@Namespace='com.sap.vocabularies.Common.v1']/@Alias,'.Label'))]"
+    use="@String | edm:String" />
 
   <!-- TODO: collect all annotations for target once in caller and pass them here -->
   <xsl:template name="capability">
@@ -277,34 +299,22 @@
     <xsl:param name="node" />
     <xsl:param name="term" />
     <xsl:param name="termAliased" />
-    <xsl:param name="qualifier" select="null" />
-    <xsl:variable name="annotation" select="$node/edm:Annotation[((not($qualifier) and not(@Qualifier)) or $qualifier=@Qualifier) and (@Term=$term or @Term=$termAliased)]" />
-    <xsl:variable name="description" select="$annotation/@String|$annotation/edm:String" />
-    <xsl:choose>
-      <xsl:when test="$description">
-        <xsl:call-template name="escape">
-          <xsl:with-param name="string" select="$description" />
-        </xsl:call-template>
-      </xsl:when>
-      <xsl:otherwise>
-        <xsl:variable name="target-path">
-          <xsl:call-template name="annotation-target">
-            <xsl:with-param name="node" select="$node" />
-          </xsl:call-template>
-        </xsl:variable>
-        <xsl:variable name="target-path-aliased">
-          <xsl:call-template name="annotation-target">
-            <xsl:with-param name="node" select="$node" />
-            <xsl:with-param name="qualifier" select="$node/ancestor::edm:Schema/@Alias" />
-          </xsl:call-template>
-        </xsl:variable>
-        <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)" />
-        <xsl:variable name="annotationExt" select="$annos/edm:Annotation[((not($qualifier) and not(@Qualifier)) or $qualifier=@Qualifier) and (@Term=$term or @Term=$termAliased)]" />
-        <xsl:call-template name="escape">
-          <xsl:with-param name="string" select="$annotationExt/@String|$annotationExt/edm:String" />
-        </xsl:call-template>
-      </xsl:otherwise>
-    </xsl:choose>
+    <xsl:variable name="target-path">
+      <xsl:call-template name="annotation-target">
+        <xsl:with-param name="node" select="$node" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:variable name="target-path-aliased">
+      <xsl:call-template name="annotation-target">
+        <xsl:with-param name="node" select="$node" />
+        <xsl:with-param name="qualifier" select="$node/ancestor::edm:Schema/@Alias" />
+      </xsl:call-template>
+    </xsl:variable>
+    <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)|$node" />
+    <xsl:variable name="annotationExt" select="$annos/edm:Annotation[not(@Qualifier) and (@Term=$term or @Term=$termAliased)]" />
+    <xsl:call-template name="escape">
+      <xsl:with-param name="string" select="$annotationExt/@String|$annotationExt/edm:String" />
+    </xsl:call-template>
   </xsl:template>
 
   <xsl:template name="annotation-target">
@@ -363,23 +373,19 @@
   <!-- TODO: collect all annotations for target once in caller and pass them to these four templates -->
   <xsl:template name="Core.Description">
     <xsl:param name="node" />
-    <xsl:param name="qualifier" select="null" />
     <xsl:call-template name="annotation-string">
       <xsl:with-param name="node" select="$node" />
       <xsl:with-param name="term" select="$coreDescription" />
       <xsl:with-param name="termAliased" select="$coreDescriptionAliased" />
-      <xsl:with-param name="qualifier" select="$qualifier" />
     </xsl:call-template>
   </xsl:template>
 
   <xsl:template name="Core.LongDescription">
     <xsl:param name="node" />
-    <xsl:param name="qualifier" select="null" />
     <xsl:call-template name="annotation-string">
       <xsl:with-param name="node" select="$node" />
       <xsl:with-param name="term" select="$coreLongDescription" />
       <xsl:with-param name="termAliased" select="$coreLongDescriptionAliased" />
-      <xsl:with-param name="qualifier" select="$qualifier" />
     </xsl:call-template>
   </xsl:template>
 
@@ -408,7 +414,9 @@
         <xsl:text>"swagger":"2.0"</xsl:text>
       </xsl:when>
       <xsl:otherwise>
-        <xsl:text>"openapi":"3.0.0"</xsl:text>
+        <xsl:text>"openapi":"</xsl:text>
+        <xsl:value-of select="$openapi-version" />
+        <xsl:text>"</xsl:text>
       </xsl:otherwise>
     </xsl:choose>
 
@@ -425,13 +433,19 @@
     </xsl:variable>
     <xsl:choose>
       <xsl:when test="$info-title">
-        <xsl:value-of select="$info-title" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$info-title" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="$schemaDescription!=''">
-        <xsl:value-of select="$schemaDescription" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$schemaDescription" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="$containerDescription!=''">
-        <xsl:value-of select="$containerDescription" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$containerDescription" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityContainer">
         <xsl:text>Service for namespace </xsl:text>
@@ -470,13 +484,19 @@
     </xsl:variable>
     <xsl:choose>
       <xsl:when test="$info-description">
-        <xsl:value-of select="$info-description" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$info-description" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="$schemaLongDescription!=''">
-        <xsl:value-of select="$schemaLongDescription" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$schemaLongDescription" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="$containerLongDescription!=''">
-        <xsl:value-of select="$containerLongDescription" />
+        <xsl:call-template name="escape">
+          <xsl:with-param name="string" select="$containerLongDescription" />
+        </xsl:call-template>
       </xsl:when>
       <xsl:when test="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityContainer">
         <xsl:text>This service is located at [</xsl:text>
@@ -717,11 +737,11 @@
 
   <xsl:template name="security-schemes">
     <xsl:variable name="target" select="/edmx:Edmx/edmx:DataServices/edm:Schema/edm:EntityContainer" />
-    <xsl:variable name="term" select="concat($authorizationNamespace,'.Authorizations')" />
-    <xsl:variable name="termAliased" select="concat($authorizationAlias,'.Authorizations')" />
     <xsl:variable name="target-path" select="concat($target/../@Namespace,'.',$target/@Name)" />
     <xsl:variable name="target-path-aliased" select="concat($target/../@Alias,'.',$target/@Name)" />
     <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)|$target" />
+    <xsl:variable name="term" select="concat($authorizationNamespace,'.Authorizations')" />
+    <xsl:variable name="termAliased" select="concat($authorizationAlias,'.Authorizations')" />
     <xsl:variable name="anno" select="$annos/edm:Annotation[@Term=$term or @Term=$termAliased]" />
     <xsl:if test="$anno">
       <xsl:text>,"</xsl:text>
@@ -1020,6 +1040,9 @@
       </xsl:otherwise>
     </xsl:choose>
     <xsl:text>,</xsl:text>
+    <xsl:if test="/edmx:Edmx/edmx:Reference/edmx:Include[not(starts-with(@Namespace,'Org.OData.') or starts-with(@Namespace,'com.sap.vocabularies.'))]">
+      <xsl:text>"external-ref":{"type":"object","description":"An entity from an external service"},</xsl:text>
+    </xsl:if>
     <xsl:if test="//@Type[.='Edm.GeographyPoint' or .='Edm.GeometryPoint']">
       <xsl:text>"geoPoint":{"type":"object","properties":{"type":{"type":"string","enum":["Point"],"default":"Point"},"coordinates":{"$ref":"</xsl:text>
       <xsl:value-of select="$reuse-schemas" />
@@ -1271,7 +1294,7 @@
       TODO: evaluate Partner to just have one arrow
       [FeaturedProduct]<0..1-0..1>[Advertisement]
     -->
-    <xsl:if test="$qualifier!='Edm' or local-name='NavigationProperty'">
+    <xsl:if test="($qualifier!='Edm' and $qualifier!='Core') or local-name='NavigationProperty'">
       <xsl:text>,[</xsl:text>
       <xsl:value-of select="../@Name" />
       <xsl:text>]</xsl:text>
@@ -1409,8 +1432,9 @@
     <xsl:value-of select="$suffix" />
     <xsl:text>":{"type":"object"</xsl:text>
 
-    <xsl:call-template name="Common.SAPObjectNodeType">
+    <xsl:call-template name="Common.SAPObjectNodeType-ODM.entityName-ODM.oid">
       <xsl:with-param name="target" select="." />
+      <xsl:with-param name="suffix" select="$suffix" />
     </xsl:call-template>
 
     <xsl:call-template name="properties">
@@ -1483,6 +1507,9 @@
     <xsl:variable name="computed" select="$structuredType/edm:Property[edm:Annotation[@Term=$coreComputed or @Term=$coreComputedAliased]]/@Name" />
     <xsl:variable name="computed-ext" select="(key('externalPropertyAnnotations',$qualifiedName)|key('externalPropertyAnnotations',$aliasQualifiedName))
                                               [edm:Annotation[@Term=$coreComputed or @Term=$coreComputedAliased]]/@Target" />
+    <xsl:variable name="computeddefaultvalue" select="$structuredType/edm:Property[edm:Annotation[@Term=$coreComputedDefaultValue or @Term=$coreComputedDefaultValueAliased]]/@Name" />
+    <xsl:variable name="computeddefaultvalue-ext" select="(key('externalPropertyAnnotations',$qualifiedName)|key('externalPropertyAnnotations',$aliasQualifiedName))
+                                              [edm:Annotation[@Term=$coreComputedDefaultValue or @Term=$coreComputedDefaultValueAliased]]/@Target" />
 
     <xsl:variable name="immutable" select="$structuredType/edm:Property[edm:Annotation[@Term=$coreImmutable or @Term=$coreImmutableAliased]]/@Name" />
     <xsl:variable name="immutable-ext" select="(key('externalPropertyAnnotations',$qualifiedName)|key('externalPropertyAnnotations',$aliasQualifiedName))
@@ -1546,15 +1573,81 @@
     </xsl:variable>
     <xsl:variable name="required">
       <xsl:if test="$suffix='-create'">
-        <!-- non-computed key properties are required, as are properties marked with Common.FieldControl=Mandatory -->
-        <xsl:for-each select="$structuredType/edm:Property[
-          (@Name=../edm:Key/edm:PropertyRef/@Name and not(@Name=$read-only or @Name=$computed or concat($qualifiedName,'/',@Name) = $computed-ext or concat($aliasQualifiedName,'/',@Name) = $computed-ext))
-          or concat($qualifiedName,'/',@Name)=$mandatory or concat($aliasQualifiedName,'/',@Name)=$mandatory]">
+        <!-- gather the RTFs for insert restrictions -->
+        <xsl:variable name="insert-restrictions">
+          <xsl:apply-templates select="$structuredType" mode="capabilities">
+            <xsl:with-param name="term" select="'InsertRestrictions'" />
+          </xsl:apply-templates>
+        </xsl:variable>
+
+        <!--non-computed key properties are required, as are properties marked with Common.FieldControl=Mandatory
+       and Capabilities.InsertRestrictions/ RequiredProperties  -->
+
+        <xsl:for-each
+            select="
+          $structuredType/edm:Property[
+            (
+              @Name = ../edm:Key/edm:PropertyRef/@Name
+              and not(
+                @Name = $read-only
+                or @Name = $computed
+                or @Name = $computeddefaultvalue
+                or concat($qualifiedName, '/', @Name) = $computed-ext
+                or concat($aliasQualifiedName, '/', @Name) = $computed-ext
+                or concat($qualifiedName, '/', @Name) = $computeddefaultvalue-ext
+                or concat($aliasQualifiedName, '/', @Name) = $computeddefaultvalue-ext
+              )
+            )
+            or concat($qualifiedName, '/', @Name) = $mandatory
+            or concat($aliasQualifiedName, '/', @Name) = $mandatory
+            or @Name = (
+              //edm:Annotation
+                [ contains($insert-restrictions, concat(' ', generate-id(), ' ')) ]
+              /edm:Record
+              /edm:PropertyValue[@Property = 'RequiredProperties']
+              /edm:Collection
+              /edm:PropertyPath
+            )
+
+          ]">
+            <xsl:if test="position()>1">
+              <xsl:text>,</xsl:text>
+            </xsl:if>
+            <xsl:text>"</xsl:text>
+            <xsl:value-of
+              select="@Name" />
+            <xsl:text>"</xsl:text>
+        </xsl:for-each>
+      </xsl:if>
+
+
+      <xsl:if test="$suffix = '-update'">
+            <!-- gather the RTFs for update restrictions -->
+        <xsl:variable name="update-restrictions">
+          <xsl:apply-templates select="$structuredType" mode="capabilities">
+            <xsl:with-param name="term" select="'UpdateRestrictions'" />
+          </xsl:apply-templates>
+        </xsl:variable>
+            <!-- Capabilities.UpdateRestrictions/ RequiredProperties  -->
+        <xsl:for-each
+            select="
+          $structuredType/edm:Property[
+            @Name = (
+              //edm:Annotation
+                [ contains($update-restrictions, concat(' ', generate-id(), ' ')) ]
+              /edm:Record
+              /edm:PropertyValue[@Property = 'RequiredProperties']
+              /edm:Collection
+              /edm:PropertyPath
+            )
+          ]
+        ">
           <xsl:if test="position()>1">
             <xsl:text>,</xsl:text>
           </xsl:if>
           <xsl:text>"</xsl:text>
-          <xsl:value-of select="@Name" />
+          <xsl:value-of
+            select="@Name" />
           <xsl:text>"</xsl:text>
         </xsl:for-each>
       </xsl:if>
@@ -1825,6 +1918,14 @@
           </xsl:when>
           <xsl:otherwise>
             <xsl:text>,"format":"decimal"</xsl:text>
+            <xsl:if test="number($target/@Precision)=$target/@Precision">
+              <xsl:text>,"x-sap-precision":</xsl:text>
+              <xsl:value-of select="$target/@Precision" />
+            </xsl:if>
+            <xsl:if test="number($target/@Scale)=$target/@Scale">
+              <xsl:text>,"x-sap-scale":</xsl:text>
+              <xsl:value-of select="$target/@Scale" />
+            </xsl:if>
           </xsl:otherwise>
         </xsl:choose>
         <xsl:choose>
@@ -2003,6 +2104,10 @@
           <xsl:with-param name="noArray" select="$noArray" />
         </xsl:call-template>
         <xsl:choose>
+          <xsl:when test="$inKeyParameter and $odata-version='2.0'">
+            <xsl:text>,"pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T00:00$"</xsl:text>
+            <xsl:text>,"example":"2017-04-13T00:00"</xsl:text>
+          </xsl:when>
           <xsl:when test="$inParameter and $odata-version='2.0'">
             <xsl:text>,"pattern":"^datetime'[0-9]{4}-[0-9]{2}-[0-9]{2}T00:00'$"</xsl:text>
           </xsl:when>
@@ -2069,13 +2174,17 @@
           <xsl:text>,"example":"01234567-89ab-cdef-0123-456789abcdef"</xsl:text>
         </xsl:if>
       </xsl:when>
-      <xsl:when test="$singleType='Edm.DateTimeOffset'">
+      <xsl:when test="$singleType='Edm.DateTimeOffset' or $singleType='Core.LocalDateTime'">
         <xsl:call-template name="nullableType">
           <xsl:with-param name="type" select="'string'" />
           <xsl:with-param name="nullable" select="$nullable" />
           <xsl:with-param name="noArray" select="$noArray" />
         </xsl:call-template>
         <xsl:choose>
+          <xsl:when test="$inKeyParameter and $odata-version='2.0'">
+            <xsl:text>,"pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]+)?)?$"</xsl:text>
+            <xsl:text>,"example":"2017-04-13T23:59"</xsl:text>
+          </xsl:when>
           <xsl:when test="$inParameter and $odata-version='2.0'">
             <xsl:text>,"pattern":"^datetime'[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]+)?)?'$"</xsl:text>
           </xsl:when>
@@ -2211,6 +2320,9 @@
       <xsl:call-template name="Common.SAPObjectNodeTypeReference">
         <xsl:with-param name="annos" select="$annos" />
       </xsl:call-template>
+      <xsl:call-template name="ODM.oidReference">
+        <xsl:with-param name="annos" select="$annos" />
+      </xsl:call-template>
     </xsl:if>
   </xsl:template>
 
@@ -2334,6 +2446,17 @@
     </xsl:if>
   </xsl:template>
 
+  <xsl:template name="ODM.oidReference">
+    <xsl:param name="annos" />
+    <xsl:variable name="anno" select="$annos/edm:Annotation[not(@Qualifier) and (@Term=$odmOidReference or @Term=$odmOidReferenceAliased)]" />
+    <xsl:if test="$anno/edm:Record">
+      <xsl:variable name="name" select="$anno/edm:Record/edm:PropertyValue[@Property='entityName']" />
+      <xsl:text>,"x-sap-odm-oid-reference-entity-name":"</xsl:text>
+      <xsl:value-of select="$name/@String|$name/edm:String" />
+      <xsl:text>"</xsl:text>
+    </xsl:if>
+  </xsl:template>
+
   <xsl:template name="ref">
     <xsl:param name="qualifier" />
     <xsl:param name="name" />
@@ -2356,11 +2479,16 @@
       <xsl:otherwise>
         <xsl:text>"$ref":"</xsl:text>
         <xsl:variable name="externalNamespace" select="/edmx:Edmx/edmx:Reference/edmx:Include[@Alias=$qualifier]/@Namespace|/edmx:Edmx/edmx:Reference/edmx:Include[@Namespace=$qualifier]/@Namespace" />
+        <!--
         <xsl:call-template name="json-url">
           <xsl:with-param name="url" select="/edmx:Edmx/edmx:Reference/edmx:Include[@Namespace=$externalNamespace]/../@Uri" />
         </xsl:call-template>
+        -->
         <xsl:value-of select="$reuse-schemas" />
+        <xsl:text>external-ref</xsl:text>
+        <!--
         <xsl:value-of select="$externalNamespace" />
+        -->
         <xsl:if test="not($externalNamespace)">
           <xsl:message>
             <xsl:text>Unknown qualifier: </xsl:text>
@@ -2371,11 +2499,13 @@
         </xsl:if>
       </xsl:otherwise>
     </xsl:choose>
-    <xsl:text>.</xsl:text>
-    <xsl:value-of select="$name" />
-    <xsl:variable name="qualifiedName" select="concat($qualifier,'.',$name)" />
-    <xsl:if test="key('namespaceQualifiedType',$qualifiedName)|key('aliasQualifiedType',$qualifiedName)">
-      <xsl:value-of select="$suffix" />
+    <xsl:if test="$internalNamespace">
+      <xsl:text>.</xsl:text>
+      <xsl:value-of select="$name" />
+      <xsl:variable name="qualifiedName" select="concat($qualifier,'.',$name)" />
+      <xsl:if test="key('namespaceQualifiedType',$qualifiedName)|key('aliasQualifiedType',$qualifiedName)">
+        <xsl:value-of select="$suffix" />
+      </xsl:if>
     </xsl:if>
     <xsl:text>"</xsl:text>
   </xsl:template>
@@ -2683,6 +2813,23 @@
         <xsl:choose>
           <xsl:when test="$label!=''">
             <xsl:value-of select="$label" />
+            <!-- Add entity name for disambiguation if the label occurs more than once. -->
+            <xsl:variable name="labelTarget" select="key('label',$label)[1]/.." />
+            <xsl:variable name="labelEntityType">
+              <xsl:choose>
+                <xsl:when test="$labelTarget/@Target">
+                  <xsl:value-of select="generate-id(key('namespaceQualifiedType',$labelTarget/@Target)|key('aliasQualifiedType',$labelTarget/@Target))" />
+                </xsl:when>
+                <xsl:otherwise>
+                  <xsl:value-of select="generate-id($labelTarget)" />
+                </xsl:otherwise>
+              </xsl:choose>
+            </xsl:variable>
+            <xsl:if test="$labelEntityType != generate-id($entityType)">
+              <xsl:text> (</xsl:text>
+              <xsl:value-of select="$set/@Name" />
+              <xsl:text>)</xsl:text>
+            </xsl:if>
           </xsl:when>
           <xsl:otherwise>
             <xsl:value-of select="$set/@Name" />
@@ -2694,7 +2841,23 @@
       </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
-
+  <xsl:template match="edm:EntityType" mode="capabilities">
+    <xsl:param name="term" />
+    <xsl:for-each select="//edm:EntitySet[
+      @EntityType=concat(current()/../@Namespace,'.',current()/@Name) or
+      @EntityType=concat(current()/../@Alias,'.',current()/@Name)]">
+      <xsl:variable name="target-path" select="concat(../../@Namespace,'.',../@Name,'/',@Name)" />
+      <xsl:variable name="target-path-aliased" select="concat(../../@Alias,'.',../@Name,'/',@Name)" />
+      <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)|." />
+      <xsl:for-each select="$annos/edm:Annotation[not(@Qualifier) and
+        @Term=concat($capabilitiesNamespace,'.',$term) or
+        @Term=concat($capabilitiesAlias,'.',$term)]">
+        <xsl:text> </xsl:text>
+        <xsl:value-of select="generate-id()" />
+        <xsl:text> </xsl:text>
+      </xsl:for-each>
+    </xsl:for-each>
+  </xsl:template>
   <xsl:template match="edm:EntitySet">
     <xsl:variable name="target-path" select="concat(../../@Namespace,'.',../@Name,'/',@Name)" />
     <xsl:variable name="target-path-aliased" select="concat(../../@Alias,'.',../@Name,'/',@Name)" />
@@ -2857,7 +3020,7 @@
 
         <!-- InsertRestrictions on source for this navigation property -->
         <xsl:variable name="insertRestrictions" select="$navigationPropertyRestriction/edm:PropertyValue[@Property='InsertRestrictions']/edm:Record/edm:PropertyValue[@Property='Insertable']" />
-        <xsl:variable name="navigation-insertable" select="$insertRestrictions/@Bool|$insertRestrictions/edm:Bool" />
+        <xsl:variable name="navigation-insertable" select="$insertRestrictions/@Bool|$insertRestrictions/edm:Bool|$insertRestrictions/@Path|$insertRestrictions/edm:Path" />
 
         <xsl:call-template name="pathItem-entity-collection">
           <xsl:with-param name="type" select="$singleType" />
@@ -2876,7 +3039,7 @@
             <xsl:with-param name="selectSupport"
             select="$navigationPropertyRestriction/edm:PropertyValue[@Property='SelectSupport']" />
           -->
-          <xsl:with-param name="with-post" select="$collection and ($targetSet or @ContainsTarget='true') and ($navigation-insertable='true' or (not($navigation-insertable) and not($insertable='false')))" />
+          <xsl:with-param name="with-post" select="$collection and ($targetSet or @ContainsTarget='true') and ($navigation-insertable!='false' or (not($navigation-insertable) and not($insertable='false')))" />
         </xsl:call-template>
       </xsl:if>
 
@@ -3293,13 +3456,16 @@
 
   </xsl:template>
 
-  <xsl:template name="Common.SAPObjectNodeType">
+  <xsl:template name="Common.SAPObjectNodeType-ODM.entityName-ODM.oid">
     <xsl:param name="target" />
+    <xsl:param name="suffix" />
+
     <xsl:variable name="target-path">
       <xsl:call-template name="annotation-target">
         <xsl:with-param name="node" select="$target" />
       </xsl:call-template>
     </xsl:variable>
+
     <xsl:variable name="target-path-aliased">
       <xsl:call-template name="annotation-target">
         <xsl:with-param name="node" select="$target" />
@@ -3307,12 +3473,29 @@
       </xsl:call-template>
     </xsl:variable>
     <xsl:variable name="annos" select="key('externalAnnotations',$target-path)|key('externalAnnotations',$target-path-aliased)|$target" />
+
     <xsl:variable name="sont" select="$annos/edm:Annotation[@Term=$commonSont or @Term=$commonSontAliased]/edm:Record" />
     <xsl:if test="$sont">
       <xsl:variable name="name" select="$sont/edm:PropertyValue[@Property='Name']" />
       <xsl:text>,"x-sap-object-node-type":"</xsl:text>
       <xsl:value-of select="$name/@String|$name/edm:String" />
       <xsl:text>"</xsl:text>
+    </xsl:if>
+
+    <xsl:variable name="entityName" select="$annos/edm:Annotation[@Term=$odmEntityName or @Term=$odmEntityNameAliased]" />
+    <xsl:if test="$entityName">
+      <xsl:text>,"x-sap-odm-entity-name":"</xsl:text>
+      <xsl:value-of select="$entityName/@String|$entityName/edm:String" />
+      <xsl:text>"</xsl:text>
+    </xsl:if>
+
+    <xsl:if test="not($suffix)">
+      <xsl:variable name="oid" select="$annos/edm:Annotation[@Term=$odmOid or @Term=$odmOidAliased]" />
+      <xsl:if test="$oid">
+        <xsl:text>,"x-sap-odm-oid":"</xsl:text>
+        <xsl:value-of select="$oid/@PropertyPath|$oid/edm:PropertyPath" />
+        <xsl:text>"</xsl:text>
+      </xsl:if>
     </xsl:if>
   </xsl:template>
 
@@ -3566,7 +3749,18 @@
             </xsl:otherwise>
           </xsl:choose>
 
-          <xsl:call-template name="responses" />
+          <xsl:choose>
+            <xsl:when test="$odata-version='2.0' or $odata-version='3.0'">
+              <xsl:call-template name="responses" />
+            </xsl:when>
+            <xsl:otherwise>
+              <xsl:call-template name="responses">
+                <xsl:with-param name="type" select="$qualifiedType" />
+                <xsl:with-param name="description" select="'Updated entity'" />
+                <xsl:with-param name="include-no-content" select="true()" />
+              </xsl:call-template>
+            </xsl:otherwise>
+          </xsl:choose>
 
           <xsl:text>}</xsl:text>
         </xsl:if>
@@ -3814,7 +4008,7 @@
       <xsl:when test="$odata-version='2.0' and $type='Edm.Binary'">
         <xsl:text>binary'</xsl:text>
       </xsl:when>
-      <xsl:when test="$odata-version='2.0' and $type='Edm.Date'">
+      <xsl:when test="$odata-version='2.0' and ($type='Edm.Date' or $type='Core.LocalDateTime')">
         <xsl:text>datetime'</xsl:text>
       </xsl:when>
       <xsl:when test="$odata-version='2.0' and $type='Edm.DateTimeOffset'">
@@ -3826,9 +4020,13 @@
       <xsl:when test="$odata-version='2.0' and $type='Edm.TimeOfDay'">
         <xsl:text>time'</xsl:text>
       </xsl:when>
+      <xsl:when test="$odata-version='4.0' and $type='Edm.Duration'">
+        <xsl:text>duration'</xsl:text>
+      </xsl:when>
       <xsl:when test="$type='Edm.Int64' or $type='Edm.Int32' or $type='Edm.Int16' or $type='Edm.SByte' or $type='Edm.Byte'
-                   or $type='Edm.Double' or $type='Edm.Single' or $type='Edm.Date' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay'" />
-      <!-- TODO: handle other Edm types, enumeration types, and type definitions -->
+                   or $type='Edm.Decimal' or $type='Edm.Double' or $type='Edm.Single' or $type='Edm.Boolean'
+                   or $type='Edm.Date' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay'" />
+      <!-- TODO: handle enumeration types and type definitions -->
       <xsl:otherwise>
         <xsl:if test="not($key-as-segment)">
           <xsl:text>'</xsl:text>
@@ -3840,12 +4038,13 @@
   <xsl:template name="pathValueSuffix">
     <xsl:param name="type" />
     <xsl:choose>
-      <xsl:when test="$odata-version='2.0' and ($type='Edm.Binary' or $type='Edm.Date' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay')">
+      <xsl:when test="$odata-version='2.0' and ($type='Edm.Binary' or $type='Edm.Date' or $type='Core.LocalDateTime' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay')">
         <xsl:text>'</xsl:text>
       </xsl:when>
       <xsl:when test="$type='Edm.Int64' or $type='Edm.Int32' or $type='Edm.Int16' or $type='Edm.SByte' or $type='Edm.Byte'
-                   or $type='Edm.Double' or $type='Edm.Single' or $type='Edm.Date' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay'" />
-      <!-- TODO: handle other Edm types, enumeration types, and type definitions -->
+                   or $type='Edm.Decimal' or $type='Edm.Double' or $type='Edm.Double' or $type='Edm.Single' or $type='Edm.Boolean'
+                   or $type='Edm.Date' or $type='Edm.DateTimeOffset' or $type='Edm.Guid' or $type='Edm.TimeOfDay'" />
+      <!-- TODO: handle enumeration types and type definitions -->
       <xsl:otherwise>
         <xsl:if test="not($key-as-segment)">
           <xsl:text>'</xsl:text>
@@ -4195,13 +4394,13 @@
     <xsl:variable name="target-topSupported" select="$target-topSupported-p/@Bool|$target-topSupported-p/edm:Bool" />
     <xsl:variable name="navigation-topSupported-p" select="$navigationPropertyRestriction/edm:PropertyValue[@Property='TopSupported']" />
     <xsl:variable name="navigation-topSupported" select="$navigation-topSupported-p/@Bool|$navigation-topSupported-p/edm:Bool" />
-    <xsl:variable name="with-top" select="not($navigation-topSupported='false' or (not($navigation-topSupported) and $target-topSupported='false'))" />
+    <xsl:variable name="with-top" select="not($navigation-topSupported='false' or (not($navigationPropertyRestriction) and $target-topSupported='false'))" />
 
     <xsl:variable name="target-skipSupported-p" select="$target-annotations[@Term=$capabilitiesSkipSupported or @Term=$capabilitiesSkipSupportedAliased]" />
     <xsl:variable name="target-skipSupported" select="$target-skipSupported-p/@Bool|$target-skipSupported-p/edm:Bool" />
     <xsl:variable name="navigation-skipSupported-p" select="$navigationPropertyRestriction/edm:PropertyValue[@Property='SkipSupported']" />
     <xsl:variable name="navigation-skipSupported" select="$navigation-skipSupported-p/@Bool|$navigation-skipSupported-p/edm:Bool" />
-    <xsl:variable name="with-skip" select="not($navigation-skipSupported='false' or (not($navigation-skipSupported) and $target-skipSupported='false'))" />
+    <xsl:variable name="with-skip" select="not($navigation-skipSupported='false' or (not($navigationPropertyRestriction) and $target-skipSupported='false'))" />
 
     <xsl:variable name="target-searchable-p" select="$target-annotations[@Term=$capabilitiesSearchRestrictions or @Term=$capabilitiesSearchRestrictionsAliased]/edm:Record/edm:PropertyValue[@Property='Searchable']" />
     <xsl:variable name="target-searchable" select="$target-searchable-p/@Bool|$target-searchable-p/edm:Bool" />
@@ -4337,6 +4536,8 @@
   </xsl:template>
 
   <xsl:template name="responses">
+    <!-- Local adaptation: OData V4 updates can return a representation or no content. -->
+    <xsl:param name="include-no-content" select="false()" />
     <xsl:param name="code" select="'200'" />
     <xsl:param name="type" select="null" />
     <xsl:param name="nullableFacet" select="'false'" />
@@ -4371,6 +4572,9 @@
     <xsl:variable name="complexType" select="/edmx:Edmx/edmx:DataServices/edm:Schema[@Namespace=$qualifier or @Alias=$qualifier]/edm:ComplexType[@Name=$typename]" />
 
     <xsl:text>,"responses":{</xsl:text>
+    <xsl:if test="$include-no-content">
+      <xsl:text>"204":{"description":"Updated successfully without a response body"},</xsl:text>
+    </xsl:if>
     <xsl:choose>
       <xsl:when test="not($type)">
         <xsl:text>"204":{"description":"</xsl:text>

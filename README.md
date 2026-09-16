@@ -29,6 +29,10 @@ services remain available. The description lookup falls back to classic texts
 when the repository API is unavailable.
 
 # FAQ
+
+For the pinned converter version, local adaptations, and regression checks, see
+[OData converter maintenance](docs/converters.md).
+
 For questions, bugs or feature requests please create an [issue](https://gitlab.com/geertjanklaps/abap-openapi-ui/issues)
 
 # Contributing
