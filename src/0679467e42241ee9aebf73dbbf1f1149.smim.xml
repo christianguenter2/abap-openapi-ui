@@ -4,6 +4,11 @@
   <asx:values>
    <URL>/SAP/BC/BSP/SAP/ZGW_OPENAPI/swagger-ui.css</URL>
    <CLASS>M_TEXT_L</CLASS>
+   <EXTRA>
+    <FILE_NAME>swagger-ui.css</FILE_NAME>
+    <MIMETYPE>text/css</MIMETYPE>
+    <PARENT_FOLDER_ID>0679467E42241EE9AEBF294DB91D50C1</PARENT_FOLDER_ID>
+   </EXTRA>
   </asx:values>
  </asx:abap>
 </abapGit>

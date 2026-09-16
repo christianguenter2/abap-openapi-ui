@@ -4,6 +4,11 @@
   <asx:values>
    <URL>/SAP/BC/BSP/SAP/ZGW_OPENAPI/favicon-16x16.png</URL>
    <CLASS>M_APP_L</CLASS>
+   <EXTRA>
+    <FILE_NAME>favicon-16x16.png</FILE_NAME>
+    <MIMETYPE>image/png</MIMETYPE>
+    <PARENT_FOLDER_ID>0679467E42241EE9AEBF294DB91D50C1</PARENT_FOLDER_ID>
+   </EXTRA>
   </asx:values>
  </asx:abap>
 </abapGit>
