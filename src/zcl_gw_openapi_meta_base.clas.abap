@@ -23,6 +23,7 @@ CLASS zcl_gw_openapi_meta_base DEFINITION
     METHODS convert_odatav4_to_json
       IMPORTING
         !iv_metadata_v4 TYPE xstring
+        !iv_odata_version TYPE string DEFAULT '4.0'
       RETURNING
         VALUE(rv_json)  TYPE xstring .
   PRIVATE SECTION.
@@ -52,7 +53,7 @@ CLASS ZCL_GW_OPENAPI_META_BASE IMPLEMENTATION.
     lv_version = 'V' && lv_version.
 
     lt_parameters = VALUE #( ( name = 'openapi-version' value = '3.0.0' )
-                             ( name = 'odata-version' value = '4.0' )
+                             ( name = 'odata-version' value = iv_odata_version )
                              ( name = 'scheme' value = me->mv_scheme )
                              ( name = 'host' value = me->mv_host )
                              ( name = 'basePath' value = '/' && me->mv_path )
